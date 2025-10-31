@@ -1,6 +1,8 @@
 from typing import Any, Dict, Set
-from dotenv import load_dotenv
-from langchain.schema import Document
+from dotenv import load_dotenv# ✅ Updated imports for LangChain 1.0+
+from langchain_core.documents import Document
+from langchain_community.tools.tavily_search import TavilySearchResults
+import os
 from langchain_tavily import TavilySearch
 from src.workflow.state import GraphState
 

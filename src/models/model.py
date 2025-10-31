@@ -7,12 +7,22 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 load_dotenv()
-
 def get_llm_model():
+    """
+    Returns a stable Gemini 2.5 Flash model for text-based tasks.
+    """
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError("❌ GOOGLE_API_KEY missing from .env file")
+
     return ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
-        temperature=0,
+        model="gemini-2.5-flash",   # ⚡ Fast and reasoning-capable
+        temperature=0.3,
+        max_output_tokens=1024,
+        convert_system_message_to_human=True,
+        google_api_key=api_key,  # ✅ force correct endpoint
     )
+
 
 def get_perplexity_llm():
     return ChatPerplexity(
