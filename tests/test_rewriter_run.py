@@ -1,6 +1,6 @@
 from src.workflow.nodes.rewrite_query import run
 
-state = {"user_query": "weather tomorrow India"}
+state = {"question": "weather tomorrow India"}
 state = run(state)
 
 print("\n==== Rewriter Output ====")

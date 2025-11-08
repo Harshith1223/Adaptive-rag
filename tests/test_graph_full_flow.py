@@ -44,15 +44,15 @@ print(f"[LOGGING] Output will be saved to: {log_file}\n")
 
 # === Test Cases ===
 test_cases = [
-    {"user_query": "Explain AI agents and autonomous systems"},
-    {"user_query": "Current weather in Mumbai", "available_tools": ["weather_api"]},
-    {"user_query": "Latest stock price of Apple", "available_tools": ["stock_api"]},
-    {"user_query": "Compare neural networks and decision trees in machine learning"},
-    {"user_query": "Hello there!"}
+    {"question": "Explain AI agents and autonomous systems"},
+    {"question": "Current weather in Mumbai", "available_tools": ["weather_api"]},
+    {"question": "Latest stock price of Apple", "available_tools": ["stock_api"]},
+    {"question": "Compare neural networks and decision trees in machine learning"},
+    {"question": "Hello there!"}
 ]
 
 for idx, case in enumerate(test_cases, 1):
-    print(f"\n🧪 [CASE {idx}] Query: {case['user_query']}")
+    print(f"\n🧪 [CASE {idx}] Query: {case['question']}")
     state = GraphState(**case)
     
     result = app.invoke(

@@ -44,10 +44,10 @@ def _analyze_with_llm(question: str) -> Dict[str, str]:
             "Decide if the following user query has enough specific details "
             "for an AI retrieval system to find accurate information.\n\n"
             "Output JSON:\n"
-            "{\n"
+            "{{\n"
             "  \"needs_more_detail\": true/false,\n"
             "  \"reason\": \"<brief reasoning>\"\n"
-            "}\n\n"
+            "}}\n\n"
             "User Query:\n{question}"
         )
 

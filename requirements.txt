@@ -1,18 +1,36 @@
-beautifulsoup4
-langchain-community
-tiktoken
-langchainhub
+# Core LLM + Workflow
 langchain
+langchain-core
+langchainhub
+langchain-community
 langgraph
-tavily-python
 langchain-openai
+langchain-google-genai
+langchain-perplexity
+langchain-chroma
+langchain-tavily==0.1.5
+langchain-aws
+
+# Utilities & Environment
 python-dotenv
+tiktoken
+tavily-python
+requests
+aiohttp
+asyncio
+
+# Evaluation Metrics
+nltk
+bert-score
+rouge-score
+
+# UI + Dev Tools
+streamlit
 black
 isort
 pytest
-langchain-chroma
-langchain-tavily==0.1.5
-langchain_aws
-langchain_google_genai
-langchain-perplexity 
-langchain-openai
+
+# Optional: Data Tools
+pandas
+matplotlib
+beautifulsoup4

@@ -3,7 +3,7 @@ from langchain_core.messages import BaseMessage
 
 class GraphState(TypedDict, total=False):
     question: str
-    user_query: str
+    question: str
     generation: str
     web_search: bool
     documents: List[BaseMessage]

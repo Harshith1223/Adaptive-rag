@@ -7,6 +7,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 import json, os
 from datetime import datetime
+from src.workflow.chains.hallucination_grader import hallucination_grader  # ✅ import your grader
+from src.workflow.chains.answer_grader import answer_grader                # ✅ import second grader
 
 LOG_DIR = "logs"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -21,6 +23,10 @@ async def run_gemini_branch(question: str, thread_id: str) -> Dict[str, Any]:
     for output in app.stream({"question": question}, config=config):
         for _, value in output.items():
             result = value
+    
+    if result and "generation" in result:
+        print(f"\n🧩 Adaptive RAG Generated Answer:\n{result['generation']}\n")
+        
     return result or {}
 
 
@@ -28,11 +34,11 @@ async def run_gemini_branch(question: str, thread_id: str) -> Dict[str, Any]:
 async def generate_with_gemini(question: str, documents, messages):
     gemini_llm = get_llm_model()
     system_prompt = """You are an expert assistant. 
-Use the retrieved context to answer the question clearly and concisely. 
-If you don't know, say so. Use at most three sentences.
-Question: {question}
-Context: {context}
-Answer:"""
+                    Use the retrieved context to answer the question clearly and concisely. 
+                    If you don't know, say so. Use at most three sentences.
+                    Question: {question}
+                    Context: {context}
+                    Answer:"""
 
     prompt = ChatPromptTemplate.from_template(system_prompt)
     chain = prompt | gemini_llm | StrOutputParser()
@@ -96,27 +102,63 @@ OpenAI Answer: {openai_answer}"""
 
 # --- Parallel workflow orchestrator ---
 async def run_parallel_branches(question: str, thread_id: str):
-    """Run Gemini and OpenAI branches concurrently."""
-    # Step 1: Retrieve context using Gemini
+    """Run Gemini and OpenAI branches concurrently with grading before judgment."""
+
+    # --- Step 1: Context Retrieval ---
     gemini_result = await run_gemini_branch(question, thread_id)
     documents = gemini_result.get("documents", [])
     messages = gemini_result.get("messages", [])
 
-    # Step 2: Parallel generation (Gemini + OpenAI)
+    # --- Step 2: Generate in parallel (Gemini + OpenAI) ---
     gemini_task = asyncio.create_task(generate_with_gemini(question, documents, messages))
     openai_task = asyncio.create_task(generate_with_openai(question, documents, messages))
     gemini_answer, openai_answer = await asyncio.gather(gemini_task, openai_task)
 
-    # Step 3: Judge with Perplexity
+    # --- Step 3: Run Hallucination & Relevance Graders ---
+    doc_text = "\n\n".join([doc.page_content for doc in documents])
+
+    # 🧠 Hallucination checks
+    gemini_hallucination = hallucination_grader.invoke({
+        "documents": doc_text,
+        "generation": gemini_answer
+    }).binary_score
+
+    openai_hallucination = hallucination_grader.invoke({
+        "documents": doc_text,
+        "generation": openai_answer
+    }).binary_score
+
+    # ✅ Answer relevance checks
+    gemini_relevance = answer_grader.invoke({
+        "question": question,
+        "generation": gemini_answer
+    }).binary_score
+
+    openai_relevance = answer_grader.invoke({
+        "question": question,
+        "generation": openai_answer
+    }).binary_score
+
+    # --- Step 4: Apply grading filter ---
+    if not gemini_hallucination or not gemini_relevance:
+        gemini_answer = "[❌ Gemini answer flagged: hallucination or irrelevant]"
+    if not openai_hallucination or not openai_relevance:
+        openai_answer = "[❌ OpenAI answer flagged: hallucination or irrelevant]"
+
+    # --- Step 5: Judge between valid ones ---
     selected, reason = await judge_with_perplexity(question, gemini_answer, openai_answer)
     final_answer = gemini_answer if selected == "Gemini" else openai_answer
 
-    # Step 4: Logging
+    # --- Step 6: Log everything ---
     entry = {
         "timestamp": datetime.now().isoformat(),
         "question": question,
         "gemini_answer": gemini_answer,
         "openai_answer": openai_answer,
+        "gemini_hallucination": gemini_hallucination,
+        "openai_hallucination": openai_hallucination,
+        "gemini_relevance": gemini_relevance,
+        "openai_relevance": openai_relevance,
         "selected": selected,
         "reason": reason,
     }
@@ -124,3 +166,4 @@ async def run_parallel_branches(question: str, thread_id: str):
         f.write(json.dumps(entry) + "\n")
 
     return final_answer, reason, selected, documents
+    

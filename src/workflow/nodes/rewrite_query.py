@@ -5,7 +5,7 @@ Uses Gemini 2.5 Flash (via LangChain) to rewrite the user query
 into a clear, retrieval-friendly version.
 
 Inputs:
-    state["user_query"]  : str
+    state["question"]  : str
 
 Outputs:
     state["rewritten_query"] : str
@@ -18,8 +18,7 @@ import time, json, os
 from typing import Dict
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnableSequence  # ✅ replaces LLMChain
-from src.models.model import get_llm_model  # ✅ your Gemini 2.5 Flash model
+from src.models.model import get_llm_model  # Gemini 2.5 Flash model
 
 LOG_PATH = os.environ.get("REWRITE_LOG", "logs/model_selection_log.txt")
 
@@ -53,13 +52,21 @@ def _rewrite_with_gemini(query: str) -> str:
         prompt = ChatPromptTemplate.from_template(prompt_text)
         parser = StrOutputParser()
 
-        # ✅ Modern LangChain 1.x syntax — chain composition
+        # Modern LangChain syntax
         chain = prompt | llm | parser
 
         rewritten = chain.invoke({"query": query})
+
         if isinstance(rewritten, dict):
-            return rewritten.get("text", "").strip()
-        return str(rewritten).strip()
+            rewritten_text = rewritten.get("text", "").strip()
+        else:
+            rewritten_text = str(rewritten).strip()
+
+        if not rewritten_text:
+            print(f"[rewrite_query] ⚠️ Empty output from Gemini — using fallback.")
+            rewritten_text = _simple_rewrite(query)
+
+        return rewritten_text
 
     except Exception as e:
         print(f"[rewrite_query] ⚠️ Fallback due to error: {e}")
@@ -67,9 +74,13 @@ def _rewrite_with_gemini(query: str) -> str:
 
 
 def run(state: Dict) -> Dict:
-    """Main node entry point."""
-    query = state.get("user_query") or state.get("query") or ""
+    """Main node entry point for rewriting user query."""
+    query = state.get("question") or state.get("query") or ""
+
+    print(f"[TRACE] Entered rewrite_query | Original Query: {query!r}")
+
     if not query:
+        print("[rewrite_query] ⚠️ No query found in state — skipping rewrite.")
         state.update({
             "rewritten_query": "",
             "prompt": "",
@@ -78,11 +89,11 @@ def run(state: Dict) -> Dict:
         })
         return state
 
-    # 1️⃣ Try Gemini LLM for rewriting
+    # === 1️⃣ Try Gemini LLM for rewriting ===
     rewritten = _rewrite_with_gemini(query)
     method = "Gemini-2.5-Flash"
 
-    # 2️⃣ Save results in state (compatible with retriever)
+    # === 2️⃣ Update state ===
     state.update({
         "rewritten_query": rewritten,
         "prompt": rewritten,
@@ -90,7 +101,7 @@ def run(state: Dict) -> Dict:
         "rewrite_metadata": {"method": method, "ts": time.time()}
     })
 
-    # 3️⃣ Log rewrite event
+    # === 3️⃣ Log rewrite event ===
     try:
         os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
         with open(LOG_PATH, "a", encoding="utf-8") as f:
@@ -100,8 +111,11 @@ def run(state: Dict) -> Dict:
                 "rewritten_query": rewritten,
                 "method": method
             }) + "\n")
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[rewrite_query] ⚠️ Failed to write log: {e}")
 
-    print(f"[rewrite_query] ✅ Rewritten Query: {rewritten}")
+    # === 4️⃣ Always print rewritten query clearly ===
+    print(f"[rewrite_query] ✅ Original: {query!r}")
+    print(f"[rewrite_query] ✨ Rewritten: {rewritten!r}\n")
+
     return state
