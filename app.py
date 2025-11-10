@@ -7,6 +7,7 @@ from datetime import datetime
 from src.workflow.parallel_runner import run_parallel_branches
 from src.workflow.graph import is_greeting
 from src.cli.main import handle_greeting
+from src.workflow.state import GraphState
 
 # Load environment variables
 load_dotenv()
@@ -15,11 +16,12 @@ load_dotenv()
 st.set_page_config(page_title="Adaptive RAG System", page_icon="🤖", layout="wide")
 
 # --- Utility functions ---
-def log_feedback(question, answer, rating):
+def log_feedback(question, answer, rating, rewrite=None):
     """Log user feedback to a file."""
     feedback_entry = {
         "timestamp": datetime.now().isoformat(),
         "question": question,
+        "rewrite_query": rewrite or "",
         "answer": answer,
         "rating": rating
     }
@@ -46,6 +48,8 @@ if "current_question" not in st.session_state:
     st.session_state.current_question = ""
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = f"user_session_{datetime.now().timestamp()}"
+if "last_rewrite" not in st.session_state:
+    st.session_state.last_rewrite = ""
 
 # Title
 st.title("🤖 Adaptive RAG System")
@@ -89,26 +93,37 @@ with col1:
                         for i, source in enumerate(sources, 1):
                             st.markdown(f"**Doc {i}: {source}**")
                     else:
-                        # Run full parallel workflow (Gemini + OpenAI judged by Perplexity)
-                        final_answer, reason, selected, documents = asyncio.run(
-                            run_parallel_branches(question, thread_id)
-                            
+                        # Run full parallel workflow
+                        state = GraphState({"question": question})
+                        final_answer, reason, selected, documents, rewritten_query = asyncio.run(
+                            run_parallel_branches(question, thread_id,state)
                         )
 
-                        # Try reading both answers from log file
+                        # ✅ Save rewrite in session for feedback
+                        st.session_state.last_rewrite = rewritten_query
+
+                        # Display rewritten query
+                        st.subheader("🔁 Rewritten Query")
+                        st.markdown(f"""
+                            <div style="background-color:#1e1e1e; padding:10px; border-radius:8px;">
+                                <b style="color:#00d9ff;">🔁 Rewritten Query:</b> 
+                                <span style="color:#dcdcdc;">{rewritten_query}</span>
+                            </div>
+                        """, unsafe_allow_html=True)
+
+                        # Read Gemini & OpenAI answers from log
                         gemini_answer, openai_answer = "", ""
                         try:
                             with open("logs/model_selection_log.txt", "r", encoding="utf-8") as f:
                                 lines = f.readlines()
                                 if lines:
-                                    import json
                                     record = json.loads(lines[-1])
                                     gemini_answer = record.get("gemini_answer", "")
                                     openai_answer = record.get("openai_answer", "")
                         except Exception:
                             pass
 
-                        # --- Display all answers and decision ---
+                        # Display all answers and decision
                         st.subheader("Gemini Answer")
                         st.write(gemini_answer or "_No Gemini answer available._")
 
@@ -120,7 +135,7 @@ with col1:
                         st.info(f"**Perplexity Decision:** {reason}")
                         st.success("Answer generated!")
 
-                        # --- Display document links ---
+                        # Display document links
                         if documents:
                             st.subheader("Retrieved Documents")
                             unique_sources = sorted(
@@ -144,6 +159,7 @@ with col2:
         st.session_state.feedback_status = ""
         st.session_state.current_answer = ""
         st.session_state.current_question = ""
+        st.session_state.last_rewrite = ""
         st.session_state.thread_id = f"user_session_{datetime.now().timestamp()}"
         st.rerun()
 
@@ -156,14 +172,16 @@ if st.session_state.current_answer and st.session_state.current_question:
             st.session_state.feedback_status = log_feedback(
                 st.session_state.current_question,
                 st.session_state.current_answer,
-                "positive"
+                "positive",
+                rewrite=st.session_state.get("last_rewrite")
             )
     with fb_col2:
         if st.button("👎 Thumbs Down"):
             st.session_state.feedback_status = log_feedback(
                 st.session_state.current_question,
                 st.session_state.current_answer,
-                "negative"
+                "negative",
+                rewrite=st.session_state.get("last_rewrite")
             )
 
 # Show feedback status

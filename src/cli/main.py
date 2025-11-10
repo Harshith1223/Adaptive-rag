@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 import asyncio
 from src.workflow.parallel_runner import run_parallel_branches
 from src.workflow.graph import is_greeting
+from src.workflow.state import GraphState
 
 load_dotenv()
 
@@ -32,9 +33,10 @@ async def process_query(question: str, thread_id: str):
     print(f"DEBUG: Processing query with thread_id: {thread_id}")
 
     # Parallel workflow (Gemini, OpenAI, Perplexity Judge)
-    final_answer, reason, selected, documents = await run_parallel_branches(question, thread_id)
+    state = GraphState({"question": question})
+    final_answer, reason, selected, documents, rewritten_query = await run_parallel_branches(question, thread_id,state)
 
-    return final_answer, reason, selected, documents
+    return final_answer, reason, selected, documents,rewritten_query
 
 
 def main():
@@ -63,7 +65,7 @@ def main():
                 print("Processing (Gemini + OpenAI branches)...")
 
                 # Run RAG + Judge
-                final_answer, reason, selected, documents = loop.run_until_complete(
+                final_answer, reason, selected, documents,rewritten_query = loop.run_until_complete(
                     process_query(question, thread_id)
                 )
 
@@ -82,6 +84,7 @@ def main():
                 if last:
                     import json
                     record = json.loads(last)
+                    print(f"\n Rewritten Query:\n{rewritten_query}")
                     print(f"\nGemini Answer:\n{record.get('gemini_answer', 'N/A')}\n")
                     print(f"OpenAI Answer:\n{record.get('openai_answer', 'N/A')}\n")
                     print("Perplexity Judge Decision:")

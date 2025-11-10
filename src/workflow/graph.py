@@ -6,6 +6,7 @@ from langgraph.graph import END, StateGraph
 from langchain_core.runnables import RunnableLambda
 import datetime
 import re
+from src.workflow.state import GraphState
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from bert_score import score as bert_score
 from transformers import pipeline
@@ -30,9 +31,8 @@ from src.workflow.consts import (
 )
 from src.workflow.nodes.generate import generate
 from src.workflow.nodes.grade_documents import grade_documents
-from src.workflow.nodes.retrieve import retrieve as retrieve_run
+from src.workflow.nodes.retrieve import run as retrieve_run
 from src.workflow.nodes.web_search import web_search
-from src.workflow.state import GraphState
 from src.workflow.nodes.rewrite_query import run as rewrite_query_run
 from src.workflow.nodes.query_analyzer import run as query_analyzer_run
 
