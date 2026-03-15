@@ -1,6 +1,6 @@
-# Adaptive Agentic RAG System
+# Adaptive RAG System
 
-An **adaptive, agentic Retrieval-Augmented Generation (RAG) system** that dynamically rewrites queries, routes requests, retrieves context, evaluates grounding, and compares multiple LLM outputs using structured grading and confidence metrics.
+An **adaptive, Retrieval-Augmented Generation (RAG) system** that dynamically rewrites queries, routes requests, retrieves context, evaluates grounding, and compares multiple LLM outputs using structured grading and confidence metrics.
 
 This project is designed to be **transparent, self-evaluating, and extensible**, avoiding black-box LLM behavior.
 
