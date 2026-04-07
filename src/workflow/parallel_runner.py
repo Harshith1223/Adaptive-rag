@@ -15,6 +15,29 @@ LOG_DIR = "logs"
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOG_DIR, "model_selection_log.txt")
 
+
+def build_cited_answer(answer: str, documents) -> str:
+    """
+    Append lightweight source citations to the selected final answer.
+    """
+    if not answer:
+        return answer
+
+    unique_sources = []
+    seen = set()
+
+    for doc in documents or []:
+        source = (getattr(doc, "metadata", {}) or {}).get("source")
+        if source and source not in seen:
+            seen.add(source)
+            unique_sources.append(source)
+
+    if not unique_sources:
+        return answer
+
+    citation_lines = [f"[{idx}] {src}" for idx, src in enumerate(unique_sources, start=1)]
+    return f"{answer}\n\nSources:\n" + "\n".join(citation_lines)
+
 # --- Shared context retriever using Gemini graph ---
 # --- Shared context retriever using Gemini graph ---
 # --- Shared context retriever using Gemini graph ---
@@ -183,6 +206,7 @@ async def run_parallel_branches(question: str, thread_id: str, state: GraphState
     # --- Step 5: Judge between valid ones ---
     selected, reason = await judge_with_perplexity(question, gemini_answer, openai_answer)
     final_answer = gemini_answer if selected == "Gemini" else openai_answer
+    final_answer = build_cited_answer(final_answer, documents)
 
     # --- Step 6: Log everything ---
     entry = {
@@ -197,6 +221,7 @@ async def run_parallel_branches(question: str, thread_id: str, state: GraphState
         "openai_relevance": openai_relevance,
         "selected": selected,
         "reason": reason,
+        "sources": [doc.metadata.get("source", "Unknown Source") for doc in documents],
         # ✅ metrics now computed by the grader
         "context_relevance": state.get("context_relevance", 0.0),
         "context_precision": state.get("context_precision", 0.0),
@@ -209,4 +234,3 @@ async def run_parallel_branches(question: str, thread_id: str, state: GraphState
         f.write(json.dumps(entry) + "\n")
 
     return final_answer, reason, selected, documents, rewritten_query
-

@@ -28,11 +28,13 @@ from src.workflow.consts import (
     REWRITE_QUERY,
     QUERY_ANALYZER,
     ROUTER,
+    TOOL_ORCHESTRATOR,
 )
 from src.workflow.nodes.generate import generate
 from src.workflow.nodes.grade_documents import grade_documents
 from src.workflow.nodes.retrieve import run as retrieve_run
 from src.workflow.nodes.web_search import web_search
+from src.workflow.nodes.tool_orchestrator import run as tool_orchestrator_run
 from src.workflow.nodes.rewrite_query import run as rewrite_query_run
 from src.workflow.nodes.query_analyzer import run as query_analyzer_run
 
@@ -105,6 +107,12 @@ def get_summarizer():
         print(f"[metric] ⚠️ Summarizer load failed: {e}")
         return None
 
+
+@lru_cache()
+def get_embedder():
+    """Cache embedding model to avoid re-loading on each grading cycle."""
+    return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
 def grade_generation_grounded_in_documents_and_question(state):
     """Evaluates RAG answer using retrieval + generation focused metrics (with capped retries)."""
     print("---CHECK RAG PERFORMANCE (Retrieval + Generation metrics)---")
@@ -140,7 +148,7 @@ def grade_generation_grounded_in_documents_and_question(state):
         # ==========================================================
         # 📚 3. Retrieval Focused Metrics
         # ==========================================================
-        embedder = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        embedder = get_embedder()
         q_emb = embedder.embed_query(question)
         d_embs = [embedder.embed_query(doc.page_content) for doc in documents]
 
@@ -237,6 +245,7 @@ workflow.add_node(RETRIEVE, RunnableLambda(retrieve_run))
 workflow.add_node(GRADE_DOCUMENTS, grade_documents)
 workflow.add_node(GENERATE, generate)
 workflow.add_node(WEBSEARCH, web_search)
+workflow.add_node(TOOL_ORCHESTRATOR, RunnableLambda(tool_orchestrator_run))
 
 # === Edges ===
 workflow.add_edge(REWRITE_QUERY, QUERY_ANALYZER)
@@ -250,7 +259,7 @@ workflow.add_conditional_edges(
 workflow.add_conditional_edges(
     ROUTER,
     lambda state: state.get("selected_source"),
-    {"vector": RETRIEVE, "web": WEBSEARCH, "tool": WEBSEARCH},
+    {"vector": RETRIEVE, "web": WEBSEARCH, "tool": TOOL_ORCHESTRATOR},
 )
 
 workflow.add_edge(RETRIEVE, GRADE_DOCUMENTS)
@@ -268,6 +277,7 @@ workflow.add_conditional_edges(
 )
 
 workflow.add_edge(WEBSEARCH, GENERATE)
+workflow.add_edge(TOOL_ORCHESTRATOR, GENERATE)
 
 # === Entry point ===
 workflow.set_conditional_entry_point(

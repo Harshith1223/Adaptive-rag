@@ -5,7 +5,7 @@ Decides whether to route a query to Vector DB or Web Search based on query type
 and analyzer output. If routed to vector, automatically retrieves relevant documents.
 """
 
-from typing import Literal, Dict, Any, Set
+from typing import Literal, Dict, Any, Set, List, Tuple
 from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
 import json, time, os, re, sys
@@ -14,7 +14,7 @@ import json, time, os, re, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
 
 from src.models.model import get_llm_model
-from data.ingestion import get_retriever  # ✅ import retriever
+from data.ingestion import get_vectorstore
 
 LOG_PATH = os.environ.get("ROUTER_LOG", "logs/model_selection_log.txt")
 
@@ -61,6 +61,43 @@ def _fallback_route(question: str, needs_more_detail: bool, tools=None) -> Dict[
     return {"selected_source": "vector", "route_reason": "Well-defined query; local context sufficient."}
 
 
+def _keyword_overlap_score(question: str, text: str) -> float:
+    q_terms = {t for t in re.findall(r"\w+", question.lower()) if len(t) > 2}
+    t_terms = {t for t in re.findall(r"\w+", text.lower()) if len(t) > 2}
+    if not q_terms or not t_terms:
+        return 0.0
+    return len(q_terms & t_terms) / len(q_terms)
+
+
+def _hybrid_retrieve(question: str, k: int = 6) -> List[Any]:
+    """
+    Hybrid retrieval:
+    1) dense similarity search
+    2) MMR search for diversity
+    3) lexical rerank by keyword overlap
+    """
+    vectorstore = get_vectorstore()
+    dense_docs = vectorstore.similarity_search(question, k=max(k, 4))
+    mmr_docs = vectorstore.max_marginal_relevance_search(question, k=max(k, 4), fetch_k=max(12, k * 2))
+
+    merged: List[Any] = []
+    seen: Set[Tuple[str, str]] = set()
+    for doc in dense_docs + mmr_docs:
+        text = (getattr(doc, "page_content", "") or "").strip()
+        source = (getattr(doc, "metadata", {}) or {}).get("source", "Unknown Source")
+        key = (source, text[:200])
+        if text and key not in seen:
+            seen.add(key)
+            merged.append(doc)
+
+    ranked = sorted(
+        merged,
+        key=lambda d: _keyword_overlap_score(question, getattr(d, "page_content", "")),
+        reverse=True,
+    )
+    return ranked[:k]
+
+
 # ---------------- ROUTER ENTRY FUNCTION ---------------- #
 def run(state: Dict[str, Any]) -> Dict[str, Any]:
     """Hybrid router combining structured LLM routing with adaptive heuristics."""
@@ -73,13 +110,17 @@ def run(state: Dict[str, Any]) -> Dict[str, Any]:
         state["route_reason"] = "No question provided."
         return state
 
-    # Step 1: Run structured router
-    try:
-        structured_result = question_router.invoke({"question": question})
-        datasource = getattr(structured_result, "datasource", "websearch")
-    except Exception as e:
-        print(f"[router] Structured router failed: {e}")
+    # Step 1: Fast-path routing (avoids extra LLM call for obvious intents)
+    lower_q = question.lower()
+    if any(k in lower_q for k in ["latest", "today", "current", "live", "now"]):
         datasource = "websearch"
+    else:
+        try:
+            structured_result = question_router.invoke({"question": question})
+            datasource = getattr(structured_result, "datasource", "websearch")
+        except Exception as e:
+            print(f"[router] Structured router failed: {e}")
+            datasource = "websearch"
 
     # Step 2: Adaptive enhancement
     if datasource == "vectorstore":
@@ -96,9 +137,8 @@ def run(state: Dict[str, Any]) -> Dict[str, Any]:
     # Step 3: Document Retrieval (if vector)
     if route["selected_source"] == "vector":
         try:
-            retriever = get_retriever()
-            raw_docs = retriever.invoke(question)
-            print(f"[router] --- Retrieved {len(raw_docs)} docs from vectorstore ---")
+            raw_docs = _hybrid_retrieve(question, k=6)
+            print(f"[router] --- Hybrid retrieved {len(raw_docs)} docs from vectorstore ---")
 
             # Filter duplicates and very short content
             seen_hashes = set()

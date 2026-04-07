@@ -20,6 +20,7 @@ This project is designed to be **transparent, self-evaluating, and extensible**,
   - Perplexity LLM used as an independent judge
 
 - 📚 **Retrieval-Aware Evaluation**
+  - Hybrid retrieval (dense similarity + MMR + lexical reranking)
   - Context relevance (semantic similarity)
   - Context precision (relevant document ratio)
   - Answer relevance
@@ -30,6 +31,14 @@ This project is designed to be **transparent, self-evaluating, and extensible**,
   - Answers are filtered if hallucinated or irrelevant
   - Only valid answers are compared
   - Best answer is selected with a reason
+
+- 🧩 **Web-to-Vector Memory**
+  - Fresh web search results are chunked and added to Chroma
+  - Future vector retrieval can reuse that learned context
+
+- 🛠️ **MCP Tool Orchestration**
+  - Tool-routed queries execute through a dedicated tool orchestrator node
+  - Supports domain tools (e.g., weather / stock) with retrieval-ready outputs
 
 - 🪵 **Full Observability**
   - Every query logs:
@@ -234,4 +243,3 @@ It is suitable for:
 MIT License
 
 ---
-
