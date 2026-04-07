@@ -15,6 +15,10 @@ class GraphState(TypedDict, total=False):
     documents: List[BaseMessage]
     unique_sources: Set[str]
     web_sources: List[str]
+    web_cached_chunks: Optional[int]
+    available_tools: List[str]
+    selected_tool: Optional[str]
+    tool_documents: List[BaseMessage]
     retry_count: int
     messages: List[BaseMessage]
 

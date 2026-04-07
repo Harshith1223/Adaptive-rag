@@ -5,6 +5,7 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 import os
 from langchain_tavily import TavilySearch
 from src.workflow.state import GraphState
+from data.ingestion import add_web_documents_to_vectorstore
 
 load_dotenv()
 MAX_RETRIES = 3
@@ -53,6 +54,13 @@ def web_search(state: GraphState) -> Dict[str, Any]:
         documents.append(doc)
 
     print(f"---WEB SEARCH: Retrieved {len(documents)} web docs---")
+    added_chunks = 0
+    try:
+        added_chunks = add_web_documents_to_vectorstore(documents)
+        if added_chunks:
+            print(f"---WEB SEARCH: Added {added_chunks} chunks to vector DB---")
+    except Exception as e:
+        print(f"---WEB SEARCH: Could not cache web docs in vector DB: {e}---")
 
     return {
         "documents": documents,
@@ -60,5 +68,6 @@ def web_search(state: GraphState) -> Dict[str, Any]:
         "web_search": True,
         "web_sources": new_sources,
         "unique_sources": unique_sources,
+        "web_cached_chunks": added_chunks,
         "retry_count": retry_count
     }
